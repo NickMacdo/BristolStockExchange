@@ -1272,7 +1272,7 @@ class Trader_PRZI_SHC(Trader):
                         self.strats[s]['start_t'] = time
                         self.strats[s]['profit'] = 0.0
                         self.strats[s]['pps'] = 0.0
-                    self.strats[1]['stratval'] = self.mutate_elite_strat(self.strats[0]['stratval'], time)
+                    self.strats[1]['stratval'] = self.mutate_elite_strat(self.strats[0]['stratval'])
                     self.strats[1]['start_t'] = time
                     self.strats[1]['profit'] = 0.0
                     self.strats[1]['pps'] = 0.0
