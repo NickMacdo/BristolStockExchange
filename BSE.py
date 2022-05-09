@@ -809,11 +809,20 @@ class Trader_PRZI_SHC(Trader):
 
 
     # how to mutate the strategy values when hill-climbing
-    def mutate_strat(self, s):
-        sdev = 0.05
+    def mutate_strat(self, s, time):
+        sdev = 0.08
         newstrat = s
         while newstrat == s:
             newstrat = s + random.gauss(0.0, sdev)
+            newstrat = max(-1.0, min(1.0, newstrat))
+        return newstrat
+
+
+    def mutate_elite_strat(self, s):
+        sdev = 0.02
+        newstrat = s
+        while newstrat == s:
+            newstrat = s +random.gauss(0.00, sdev)
             newstrat = max(-1.0, min(1.0, newstrat))
         return newstrat
 
@@ -835,13 +844,13 @@ class Trader_PRZI_SHC(Trader):
         # here this is randomly assigned
         # strat * direction = -1 = > GVWY; =0 = > ZIC; =+1 = > SHVR
 
-        verbose = False
+        verbose = True
 
         Trader.__init__(self, ttype, tid, balance, time)
         self.theta0 = 100           # threshold-function limit value
         self.m = 4                  # tangent-function multiplier
         self.k = 4                  # number of hill-climbing points (cf number of arms on a multi-armed-bandit)
-        self.strat_wait_time = 900  # how many secs do we give any one strat before switching? 
+        self.strat_wait_time = 600  # how many secs do we give any one strat before switching?
         self.strat_range_min = -1.0 # lower-bound on randomly-assigned strategy-value
         self.strat_range_max = +1.0 # upper-bound on randomly-assigned strategy-value
         self.active_strat = 0       # which of the k strategies are we currently playing? -- start with 0
@@ -857,13 +866,13 @@ class Trader_PRZI_SHC(Trader):
             # initialise each of the strategies in sequence
             start_time = time
             profit = 0.0
-            profit_per_second = 0
+            profit_per_second = 0.0
             lut_bid = None
             lut_ask = None
             if s == 0:
                 strategy = random.uniform(self.strat_range_min, self.strat_range_max)
             else:
-                strategy = self.mutate_strat(self.strats[0]['stratval'])     # mutant of strats[0]
+                strategy = self.mutate_strat(self.strats[0]['stratval'], time)     # mutant of strats[0]
             self.strats.append({'stratval': strategy, 'start_t': start_time,
                                 'profit': profit, 'pps': profit_per_second, 'lut_bid': lut_bid, 'lut_ask': lut_ask})
 
@@ -984,7 +993,7 @@ class Trader_PRZI_SHC(Trader):
 
             return {'strat':strat, 'dirn':dirn, 'pmin':pmin, 'pmax':pmax, 'cdf_lut':cdf}
 
-        verbose = False
+        verbose = True
 
         if verbose:
             print('t=%f PRSH getorder: %s, %s' % (time, self.tid, self.strat_str()))
@@ -1251,13 +1260,22 @@ class Trader_PRZI_SHC(Trader):
                 # at this stage, strats_sorted[0] is our newly-chosen elite-strat, about to replicate
                 # record it
 
-
-                # now replicate and mutate elite into all the other strats
-                for s in range(1, self.k):    # note range index starts at one not zero
-                    self.strats[s]['stratval'] = self.mutate_strat(self.strats[0]['stratval'])
-                    self.strats[s]['start_t'] = time
-                    self.strats[s]['profit'] = 0.0
-                    self.strats[s]['pps'] = 0.0
+                if self.strats[0]['profit'] == 0.0:
+                    for s in range(0, self.k):
+                        self.strats[s]['stratval'] = random.uniform(self.strat_range_min, self.strat_range_max)
+                        self.strats[s]['start_t'] = time
+                        self.strats[s]['profit'] = 0.0
+                        self.strats[s]['pps'] = 0.0
+                else:# now replicate and mutate elite into all the other strats
+                    for s in range(2, self.k):    # note range index starts at one not zero
+                        self.strats[s]['stratval'] = self.mutate_strat(self.strats[0]['stratval'], time)
+                        self.strats[s]['start_t'] = time
+                        self.strats[s]['profit'] = 0.0
+                        self.strats[s]['pps'] = 0.0
+                    self.strats[1]['stratval'] = self.mutate_elite_strat(self.strats[0]['stratval'], time)
+                    self.strats[1]['start_t'] = time
+                    self.strats[1]['profit'] = 0.0
+                    self.strats[1]['pps'] = 0.0
                 # and then update (wipe) records for the elite
                 self.strats[0]['start_t'] = time
                 self.strats[0]['profit'] = 0.0
@@ -1918,7 +1936,7 @@ if __name__ == "__main__":
 
     # set up common parameters for all market sessions
     start_time = 0.0
-    end_time = 600.0
+    end_time = 60000.0
     duration = end_time - start_time
 
 
@@ -1963,8 +1981,8 @@ if __name__ == "__main__":
     # Use 'periodic' if you want the traders' assignments to all arrive simultaneously & periodically
     #               'interval': 30, 'timemode': 'periodic'}
 
-    buyers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('ZIP',10)]
-    sellers_spec = [('GVWY',10),('SHVR',10),('ZIC',10),('ZIP',10)]
+    buyers_spec = [('GVWY',4),('SHVR',4),('ZIC',0),('ZIP',0), ('PRSH', 1)]
+    sellers_spec = [('GVWY',4),('SHVR',4),('ZIC',0),('ZIP',0), ('PRSH', 0)]
 
     traders_spec = {'sellers':sellers_spec, 'buyers':buyers_spec}
 
@@ -1973,7 +1991,7 @@ if __name__ == "__main__":
     verbose = True
 
     # n_trials is how many trials (i.e. market sessions) to run in total
-    n_trials = 6
+    n_trials = 3
 
     # n_recorded is how many trials (i.e. market sessions) to write full data-files for
     n_trials_recorded = 3
